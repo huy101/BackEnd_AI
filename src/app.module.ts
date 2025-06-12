@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { PtProductModule } from './modules/pt_product/pt_product.module';
+import { PtCustomerModule } from './modules/pt_product/pt_customer.module';
+import { HubWorkingTaskModule } from './modules/working_task/hub-working-task.module';
+import { HubWorkingTaskSubModule } from './modules/working_task_sub/hub-working-task-sub.module';
 
 @Module({
   imports: [
@@ -21,7 +23,9 @@ import { PtProductModule } from './modules/pt_product/pt_product.module';
         enableArithAbort: true,
       },
     }),
-    PtProductModule,
+    PtCustomerModule,
+    HubWorkingTaskModule,
+    HubWorkingTaskSubModule,
   ],
   controllers: [AppController],
   providers: [AppService],
