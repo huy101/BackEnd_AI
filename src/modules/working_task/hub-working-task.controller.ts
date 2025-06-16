@@ -2,8 +2,8 @@ import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { HubWorkingTaskService } from './hub-working-task.service';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 
-@ApiTags('HubWorkingTask')
-@Controller('hub-working-tasks')
+@ApiTags('working_task')
+@Controller('working-tasks')
 export class HubWorkingTaskController {
   constructor(private readonly hubWorkingTaskService: HubWorkingTaskService) {}
 
