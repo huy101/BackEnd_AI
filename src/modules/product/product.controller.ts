@@ -13,27 +13,48 @@ export class PtProductController {
     return this.ptProductService.findAll();
   }
 
-  @Get('find')
-  @ApiQuery({
-    name: 'field',
-    required: true,
-    type: String,
-    description: 'Tên trường cần tìm (vd: name, serial, email, ...)',
-  })
-  @ApiQuery({
-    name: 'value',
-    required: true,
-    type: String,
-    description: 'Giá trị cần tìm kiếm',
-  })
-  async findByField(
-    @Query('field') field: keyof PtProduct,
-    @Query('value') value: string,
-  ): Promise<PtProduct[]> {
-    return this.ptProductService.findByField(field, value);
+  @Get('/:name/customers')
+  @ApiQuery({ name: 'skip', required: false, type: Number })
+  @ApiQuery({ name: 'take', required: false, type: Number })
+  getProductsWithCustomer(
+    @Query('name') name: string,
+    @Query('skip') skip: string = '0',
+    @Query('take') take: string = '20',
+  ) {
+    const parsedSkip = Number.isNaN(Number(skip)) ? 0 : Number(skip);
+    const parsedTake = Number.isNaN(Number(take)) ? 20 : Number(take);
+
+    return this.ptProductService.findProductsWithCustomerByName(
+      name,
+      parsedSkip,
+      parsedTake,
+    );
   }
-  @Get('search')
-  async search(@Query('q') q: string): Promise<PtProduct[]> {
-    return this.ptProductService.search(q);
+
+  @Get('/list_products')
+  @ApiQuery({
+    name: 'skip',
+    required: false,
+    type: Number,
+    description: 'Số bản ghi bỏ qua',
+  })
+  @ApiQuery({
+    name: 'take',
+    required: false,
+    type: Number,
+    description: 'Số bản ghi lấy ra',
+  })
+  getProducts(@Query('skip') skip = '0', @Query('take') take = '20') {
+    return this.ptProductService.findListProducts(Number(skip), Number(take));
+  }
+  // @Get('overview')
+  // getProductOverview(@Query('id') id: number) {
+  //   return this.ptProductService.getOverviewByName(id);
+  // }
+
+  // API 2: GET /products/:id/detail
+  @Get(':id/detail')
+  getProductDetail(@Query('id') id: number) {
+    return this.ptProductService.getDetailById(Number(id));
   }
 }

@@ -10,7 +10,7 @@ export class AlldataService {
     private readonly AlldataRepo: Repository<PtCustomer>,
   ) {}
 
-  async findAll(skip = 0, take = 50): Promise<PtCustomer[]> {
+  async findAll(skip = 0, take = 400): Promise<PtCustomer[]> {
     return this.AlldataRepo.find({
       skip,
       take,
