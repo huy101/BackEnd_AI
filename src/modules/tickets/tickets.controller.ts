@@ -13,6 +13,18 @@ export class TicketsController {
     name: 'status',
     required: false,
   })
+  @ApiQuery({
+    name: 'skip',
+    required: false,
+    type: Number,
+    description: 'Số bản ghi bỏ qua',
+  })
+  @ApiQuery({
+    name: 'take',
+    required: false,
+    type: Number,
+    description: 'Số bản ghi lấy ra',
+  })
   async getTicketsByStatus(@Query('status') status?: string) {
     return this.ticketsService.getTicketsByStatus(status);
   }

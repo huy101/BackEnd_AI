@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import Fuse from 'fuse.js';
 import { HubProject } from 'output/entities/HubProject';
-import { Like, Not, Repository, IsNull } from 'typeorm';
-
+import { Repository, IsNull, ILike } from 'typeorm';
 @Injectable()
 export class HubProjectService {
   constructor(
@@ -112,15 +112,38 @@ export class HubProjectService {
         spaceName: task.space?.name ?? null,
       }));
   }
-  async getProjectOverviewByName(name: string) {
-    const project = await this.hubProjectRepo.findOne({
-      where: { name },
+  async getProjectOverviewByName(input: string) {
+    const projects = await this.hubProjectRepo.find({
       relations: ['cat', 'customer', 'ownerProject'],
     });
 
-    if (!project) {
-      throw new NotFoundException(`Project with name "${name}" not found`);
+    const normalize = (str: string): string =>
+      str
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\w\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+
+    const fuse = new Fuse(projects, {
+      keys: ['name'],
+      threshold: 0.3,
+      ignoreLocation: true,
+      includeScore: true,
+      useExtendedSearch: true,
+      getFn: (item, path) => normalize(item.name ?? ''),
+    });
+
+    const result = fuse.search(normalize(input));
+
+    if (result.length === 0) {
+      throw new NotFoundException(
+        `Project with name similar to "${input}" not found`,
+      );
     }
+
+    const project = result[0].item;
 
     return {
       id: project.id,

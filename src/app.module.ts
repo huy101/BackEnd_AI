@@ -27,7 +27,6 @@ import { ticketsModule } from './modules/tickets/tickets.module';
       },
     }),
 
-    AlldataModule,
     PtCustomerModule,
     HubProjectModule,
     ticketsModule,

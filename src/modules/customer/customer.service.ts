@@ -127,6 +127,31 @@ export class PtCustomerService {
 
     return { data, total };
   }
+  async findListByNameNoQuery(
+    skip = 0,
+    take = 20,
+  ): Promise<{ data: PtCustomer[]; total: number }> {
+    const [data, total] = await this.ptCustomerRepo.findAndCount({
+      skip,
+      take,
+      relations: ['cat'],
+      select: {
+        id: true,
+        name: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        cat: {
+          name: true,
+        },
+      },
+      order: {
+        id: 'DESC',
+      },
+    });
+
+    return { data, total };
+  }
 
   async getOverviewByName(name: string) {
     // Bước 1: Tìm customer.id theo tên (có thể LIKE hoặc =)
@@ -217,6 +242,7 @@ export class PtCustomerService {
         'contacts.name AS Name',
         'contacts.phone AS Phone',
         'contacts.email AS Email',
+        'contacts.email2 AS Email2',
         'contacts.followUsers AS FollowUsers',
       ])
       .where('customer.id = :customerId', { customerId })

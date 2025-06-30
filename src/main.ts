@@ -7,7 +7,6 @@ async function bootstrap() {
     .setTitle('API Documentation')
     .setDescription('The API description for your project')
     .setVersion('1.0')
-    .addTag('project') // tùy chọn
     .build();
   const app = await NestFactory.create(AppModule);
   const document = SwaggerModule.createDocument(app, config);

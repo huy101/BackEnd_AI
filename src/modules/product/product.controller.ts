@@ -31,22 +31,22 @@ export class PtProductController {
     );
   }
 
-  @Get('/list_products')
-  @ApiQuery({
-    name: 'skip',
-    required: false,
-    type: Number,
-    description: 'Số bản ghi bỏ qua',
-  })
-  @ApiQuery({
-    name: 'take',
-    required: false,
-    type: Number,
-    description: 'Số bản ghi lấy ra',
-  })
-  getProducts(@Query('skip') skip = '0', @Query('take') take = '20') {
-    return this.ptProductService.findListProducts(Number(skip), Number(take));
-  }
+  // @Get('/list_products')
+  // @ApiQuery({
+  //   name: 'skip',
+  //   required: false,
+  //   type: Number,
+  //   description: 'Số bản ghi bỏ qua',
+  // })
+  // @ApiQuery({
+  //   name: 'take',
+  //   required: false,
+  //   type: Number,
+  //   description: 'Số bản ghi lấy ra',
+  // })
+  // getProducts(@Query('skip') skip = '0', @Query('take') take = '20') {
+  //   return this.ptProductService.findListProducts(Number(skip), Number(take));
+  // }
   // @Get('overview')
   // getProductOverview(@Query('id') id: number) {
   //   return this.ptProductService.getOverviewByName(id);
