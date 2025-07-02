@@ -14,8 +14,9 @@ export class PtProductController {
   }
 
   @Get('/:name/customers')
-  @ApiQuery({ name: 'skip', required: false, type: Number })
-  @ApiQuery({ name: 'take', required: false, type: Number })
+  @ApiQuery({ name: 'skip', required: false, type: String })
+  @ApiQuery({ name: 'take', required: false, type: String })
+  @ApiQuery({ name: 'name', required: false, type: String })
   getProductsWithCustomer(
     @Query('name') name: string,
     @Query('skip') skip: string = '0',
@@ -47,10 +48,10 @@ export class PtProductController {
   // getProducts(@Query('skip') skip = '0', @Query('take') take = '20') {
   //   return this.ptProductService.findListProducts(Number(skip), Number(take));
   // }
-  // @Get('overview')
-  // getProductOverview(@Query('id') id: number) {
-  //   return this.ptProductService.getOverviewByName(id);
-  // }
+  @Get('overview')
+  getProductOverview(@Query('name') name: string) {
+    return this.ptProductService.getOverviewByName(name);
+  }
 
   // API 2: GET /products/:id/detail
   @Get(':id/detail')

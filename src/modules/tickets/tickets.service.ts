@@ -23,7 +23,12 @@ export class ticketsService {
       relations: ['brand'],
     });
   }
-  async getTicketsByStatus(input?: string | number, skip = 0, take = 20) {
+  async getTicketsByStatus(
+    input?: string | number,
+    skip = 0,
+    take = 20,
+    assignedUserName?: string,
+  ) {
     let statusId: number | undefined = undefined;
 
     if (typeof input === 'string') {
@@ -34,13 +39,25 @@ export class ticketsService {
 
     const query = this.ticketsRepo
       .createQueryBuilder('project')
-      .where('project.type = :type', { type: 10 });
+      .leftJoin('AspNetUsers', 'user', 'user.Id = project.assignedUser')
 
+      .where('project.type = :type', { type: 10 });
+    if (statusId !== undefined) {
+      query.andWhere('project.statusId = :status', { status: statusId });
+    }
+
+    if (assignedUserName) {
+      query.andWhere('user.Name LIKE :assignedUserName', {
+        assignedUserName: `%${assignedUserName}%`,
+      });
+    }
     if (statusId !== undefined) {
       query.andWhere('project.statusId = :status', { status: statusId });
     }
 
     const [tickets, total] = await query
+      .skip(skip)
+      .take(take)
       .select([
         'project.id',
         'project.name',
@@ -48,11 +65,9 @@ export class ticketsService {
         'project.ticketPhone',
         'project.ticketEmail',
         'project.ticketCc',
-        'project.ticketBcc',
         'project.ticketProducts',
         'project.ticketSolution',
         'project.ticketError',
-        'project.ticketEmailDate',
         'project.dateCreate',
         'project.dateSign',
         'project.statusId',
@@ -62,7 +77,40 @@ export class ticketsService {
       .skip(skip)
       .take(take)
       .getManyAndCount();
+    const productIds = [
+      ...new Set(
+        tickets
+          .map((t) => t.ticketProducts)
+          .filter(Boolean)
+          .flatMap((val) =>
+            typeof val === 'string'
+              ? val
+                  .split(',')
+                  .map((v) => Number(v.trim()))
+                  .filter(Boolean)
+              : [val],
+          ),
+      ),
+    ];
 
+    console.log('productIds', productIds);
+
+    let productMap = new Map<number, string>();
+
+    if (productIds.length > 0) {
+      const products = await this.ticketsRepo
+        .createQueryBuilder()
+        .select(['p.id', 'p.name'])
+        .from('PT_Product', 'p')
+        .where('p.id IN (:...ids)', { ids: productIds })
+        .getMany();
+
+      productMap = new Map<number, string>(
+        products.map((p) => [p.id as number, p.name as string]),
+      );
+    }
+
+    console.log('productMap', productMap);
     const userIds = [
       ...new Set(tickets.map((t) => t.assignedUser).filter(Boolean)),
     ];
@@ -82,25 +130,30 @@ export class ticketsService {
 
     return {
       total,
-      data: tickets.map((ticket) => ({
-        id: ticket.id,
-        name: ticket.name,
-        phone: ticket.ticketPhone,
-        email: ticket.ticketEmail,
-        ticketName: ticket.ticketName,
-        cc: ticket.ticketCc,
-        bcc: ticket.ticketBcc,
-        products: ticket.ticketProducts,
-        solution: ticket.ticketSolution,
-        error: ticket.ticketError,
-        emailDate: ticket.ticketEmailDate,
-        dateCreate: ticket.dateCreate,
-        dateSign: ticket.dateSign,
-        statusId: ticket.statusId,
-        assignedUser: ticket.assignedUser,
-        assignedUserName: userMap.get(ticket.assignedUser ?? '') || null,
-        statusLabel: statusMap[ticket.statusId ?? 0] || null,
-      })),
+      data: tickets.map((ticket) => {
+        const firstProductId =
+          typeof ticket.ticketProducts === 'number'
+            ? ticket.ticketProducts
+            : Number((ticket.ticketProducts || '').split(',')[0].trim());
+
+        return {
+          id: ticket.id,
+          name: ticket.name,
+          phone: ticket.ticketPhone,
+          email: ticket.ticketEmail,
+          ticketName: ticket.ticketName,
+          cc: ticket.ticketCc,
+          products: ticket.ticketProducts,
+          productName:
+            (productMap.get(firstProductId) as string | undefined) ?? null, // ← thêm dòng này
+          solution: ticket.ticketSolution,
+          error: ticket.ticketError,
+          dateCreate: ticket.dateCreate,
+          dateSign: ticket.dateSign,
+          assignedUserName: userMap.get(ticket.assignedUser ?? '') || null,
+          statusLabel: statusMap[ticket.statusId ?? 0] || null,
+        };
+      }),
     };
   }
 }

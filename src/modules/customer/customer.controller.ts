@@ -1,5 +1,4 @@
 import { Controller, Get, ParseIntPipe, Query } from '@nestjs/common';
-import { PtCustomer } from 'output/entities/PtCustomer';
 import { PtCustomerService } from './customer.service';
 import { ApiQuery } from '@nestjs/swagger';
 

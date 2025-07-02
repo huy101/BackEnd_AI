@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PtCustomer } from 'output/entities/PtCustomer';
-import { IsNull, Like, Repository } from 'typeorm';
+import { Like, Repository } from 'typeorm';
 
 @Injectable()
 export class PtCustomerService {
@@ -70,10 +70,6 @@ export class PtCustomerService {
       phone: customer.phone,
       categoryName: customer.cat?.name ?? null,
       assignedUser: customer.assignedUser,
-      ticketDefaultCc: customer.ticketDefaultCc,
-      ticketDefaultBcc: customer.ticketDefaultBcc,
-      insightData: customer.insightData,
-      insightLastUpdate: customer.insightLastUpdate,
       website: customer.website,
       products,
       projects,
@@ -154,36 +150,39 @@ export class PtCustomerService {
   }
 
   async getOverviewByName(name: string) {
-    // Bước 1: Tìm customer.id theo tên (có thể LIKE hoặc =)
+    // Tìm ID theo tên gần đúng
     const customerIdResult = await this.ptCustomerRepo.findOne({
       where: { name: Like(`%${name}%`) },
       select: ['id'],
-      order: { id: 'DESC' }, // hoặc 'ASC' nếu muốn bản ghi đầu tiên theo thứ tự
     });
 
-    if (!customerIdResult) {
-      throw new NotFoundException(`Customer with name ${name} not found`);
+    if (!customerIdResult?.id) {
+      throw new NotFoundException(`Customer with name '${name}' not found`);
     }
 
-    const customerId = customerIdResult.id;
-
-    // Bước 2: Join status & cat để lấy thông tin chi tiết
+    // Lấy đầy đủ thông tin customer (không lọc hubProjects ở đây)
     const customer = await this.ptCustomerRepo
       .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.status', 'status')
       .leftJoinAndSelect('customer.cat', 'cat')
       .leftJoinAndSelect('customer.ptProducts', 'ptProducts')
       .leftJoinAndSelect('customer.hubProjects', 'hubProjects')
-      .where('customer.id = :customerId', { customerId })
-      .andWhere('hubProjects.type IS NULL')
+      .where('customer.id = :customerId', { customerId: customerIdResult.id })
       .getOne();
-    const products = (customer?.ptProducts || []).map((product) => ({
-      id: product.id,
-      name: product.name,
-      dateActive: product.dateActive,
-      dateRenew: product.dateRenew,
-    }));
-    const firstProject = (customer?.hubProjects || [])[0] ?? null;
+
+    if (!customer) {
+      throw new NotFoundException(
+        `Customer with id ${customerIdResult.id} not found`,
+      );
+    }
+
+    // Lọc các project có type IS NULL
+    const filteredProjects = (customer.hubProjects || []).filter(
+      (p) => p.type === null,
+    );
+
+    // Chọn 1 project đầu tiên nếu có
+    const firstProject = filteredProjects[0] ?? null;
     const project = firstProject
       ? {
           id: firstProject.id,
@@ -192,19 +191,16 @@ export class PtCustomerService {
           dateSign: firstProject.dateSign,
         }
       : null;
-    // const projects = (customer?.hubProjects || []).map((project) => ({
-    //   name: project.name,
-    //   id: project.id,
-    //   dateCreate: project.dateCreate,
-    //   dateSign: project.dateSign,
-    // }));
-    if (!customer) {
-      throw new NotFoundException(`Customer with id ${customerId} not found`);
-    }
+
+    const products = (customer.ptProducts || []).map((product) => ({
+      id: product.id,
+      name: product.name,
+      dateActive: product.dateActive,
+      dateRenew: product.dateRenew,
+    }));
 
     return {
-      id: customerId,
-
+      id: customer.id,
       name: customer.name,
       fullname: customer.fullName,
       description: customer.description,
@@ -215,7 +211,8 @@ export class PtCustomerService {
       statusName: customer.status?.name || null,
       categoryName: customer.cat?.name || null,
       products,
-      project,
+      project, // một dự án đầu tiên nếu có
+      allProjects: filteredProjects, // ← thêm nếu bạn muốn trả về toàn bộ danh sách project type null
     };
   }
 
@@ -338,9 +335,27 @@ export class PtCustomerService {
         count: 0,
       },
     );
+    const userIds = [
+      ...new Set(activities.map((act) => act.userId).filter(Boolean)),
+    ];
+
+    let userMap = new Map<string, string>();
+    if (userIds.length > 0) {
+      const users = await this.ptCustomerRepo
+        .createQueryBuilder()
+        .select(['u.Id AS id', 'u.Name AS name'])
+        .from('AspNetUsers', 'u')
+        .where('u.Id IN (:...ids)', { ids: userIds })
+        .getRawMany<{ id: string; name: string }>();
+
+      userMap = new Map(users.map((u) => [u.id, u.name]));
+    }
 
     const mostActiveUser = Object.entries(userCount).reduce(
-      (a, [userId, u]) => (u.count > a.count ? { userId, ...u } : a),
+      (a, [userId, u]) =>
+        u.count > a.count
+          ? { name: userMap.get(userId) ?? userId, count: u.count }
+          : a,
       { userId: '', name: '', count: 0 },
     );
 
@@ -349,7 +364,7 @@ export class PtCustomerService {
       title: act.title,
       dateCreate: act.dateCreate,
       userId: act.userId,
-      userName: act.userId ?? 'Unknown User',
+      userName: userMap.get(act.userId ?? '') || 'Unknown User',
       type: typeMap[act.type ?? 0] || 'Other',
       project: act.project
         ? {
@@ -388,7 +403,20 @@ export class PtCustomerService {
         project.type === 10 &&
         (project.ticketEmail || project.ticketName || project.ticketSolution),
     );
+    const userIds = [
+      ...new Set(ticketProjects.map((p) => p.assignedUser).filter(Boolean)),
+    ];
+    let userMap = new Map<string, string>();
+    if (userIds.length > 0) {
+      const users = await this.ptCustomerRepo
+        .createQueryBuilder()
+        .select(['u.Id AS id', 'u.Name AS name'])
+        .from('AspNetUsers', 'u')
+        .where('u.Id IN (:...ids)', { ids: userIds })
+        .getRawMany<{ id: string; name: string }>();
 
+      userMap = new Map(users.map((u) => [u.id, u.name]));
+    }
     // Chỉ lấy các trường liên quan đến ticket
     const tickets = ticketProjects.map((project) => ({
       id: project.id,
@@ -396,21 +424,14 @@ export class PtCustomerService {
       name: project.name,
       ticketName: project.ticketName,
       ticketEmail: project.ticketEmail,
-      ticketEmailDate: project.ticketEmailDate,
       ticketProducts: project.ticketProducts,
       ticketPhone: project.ticketPhone,
       ticketError: project.ticketError,
       ticketSolution: project.ticketSolution,
+      ticketAssignedUser: project.assignedUser,
+      assignedUserName: userMap.get(project.assignedUser ?? '') || null,
     }));
 
-    return tickets.sort((a, b) => {
-      const dateA = a.ticketEmailDate
-        ? new Date(a.ticketEmailDate).getTime()
-        : 0;
-      const dateB = b.ticketEmailDate
-        ? new Date(b.ticketEmailDate).getTime()
-        : 0;
-      return dateB - dateA; // sort DESC by date
-    });
+    return tickets;
   }
 }
