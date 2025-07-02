@@ -13,12 +13,32 @@ export class PtProductController {
     return this.ptProductService.findAll();
   }
 
-  @Get('/:name/customers')
+  // @Get('/:name/customers')
+  // @ApiQuery({ name: 'skip', required: false, type: String })
+  // @ApiQuery({ name: 'take', required: false, type: String })
+  // @ApiQuery({ name: 'name', required: false, type: String })
+  // getProductsWithCustomer(
+  //   @Query('name') name: string,
+  //   @Query('skip') skip: string = '0',
+  //   @Query('take') take: string = '20',
+  // ) {
+  //   const parsedSkip = Number.isNaN(Number(skip)) ? 0 : Number(skip);
+  //   const parsedTake = Number.isNaN(Number(take)) ? 20 : Number(take);
+
+  //   return this.ptProductService.findProductsWithCustomerByName(
+  //     name,
+  //     parsedSkip,
+  //     parsedTake,
+  //   );
+  // }
+  @Get('/customers')
+  @ApiQuery({ name: 'productName', required: false, type: String })
+  @ApiQuery({ name: 'assignedUserName', required: false, type: String })
   @ApiQuery({ name: 'skip', required: false, type: String })
   @ApiQuery({ name: 'take', required: false, type: String })
-  @ApiQuery({ name: 'name', required: false, type: String })
   getProductsWithCustomer(
-    @Query('name') name: string,
+    @Query('productName') productName: string = '',
+    @Query('assignedUserName') assignedUserName: string = '',
     @Query('skip') skip: string = '0',
     @Query('take') take: string = '20',
   ) {
@@ -26,7 +46,8 @@ export class PtProductController {
     const parsedTake = Number.isNaN(Number(take)) ? 20 : Number(take);
 
     return this.ptProductService.findProductsWithCustomerByName(
-      name,
+      productName,
+      assignedUserName,
       parsedSkip,
       parsedTake,
     );

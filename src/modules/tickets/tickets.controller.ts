@@ -20,7 +20,6 @@ export class TicketsController {
   ) {
     const parsedSkip = Number.isNaN(Number(skip)) ? 0 : Number(skip);
     const parsedTake = Number.isNaN(Number(take)) ? 20 : Number(take);
-
     return this.ticketsService.getTicketsByStatus(
       status,
       parsedSkip,
