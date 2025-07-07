@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PtCustomer } from 'output/entities/PtCustomer';
+import {
+  removeNullFieldsDeep,
+  removeNullFromObject,
+} from 'src/utils/removeNullFields';
 import { Like, Repository } from 'typeorm';
 
 @Injectable()
@@ -10,23 +14,66 @@ export class PtCustomerService {
     private readonly ptCustomerRepo: Repository<PtCustomer>,
   ) {}
 
-  async findDetailById(id: number) {
-    const customer = await this.ptCustomerRepo.findOne({
-      where: { id },
-      relations: [
-        'cat',
-        'ptProducts',
-        'hubCustomerRes',
+  async findDetailById(id: number): Promise<any> {
+    const customer = await this.ptCustomerRepo
+      .createQueryBuilder('customer')
+      .leftJoinAndSelect('customer.cat', 'cat')
+      .leftJoinAndSelect('customer.ptProducts', 'ptProducts')
+      .leftJoinAndSelect(
+        'customer.hubProjects',
         'hubProjects',
-        'hubCustomerRes.idCustomer_3',
-      ],
-    });
+        'hubProjects.type IS NULL OR hubProjects.type = 10',
+      )
+      .leftJoinAndSelect('customer.hubCustomerRes', 'res')
+      .leftJoinAndSelect('res.idCustomer_3', 'partner')
+      .select([
+        'customer.id',
+        'customer.name',
+        'customer.fullName',
+        'customer.email',
+        'customer.phone',
+        'customer.assignedUser',
+        'customer.website',
+        'cat.name',
+        'ptProducts.id',
+        'ptProducts.name',
+        'ptProducts.dateActive',
+        'ptProducts.dateRenew',
+        'ptProducts.seats',
+        'hubProjects.id',
+        'hubProjects.name',
+        'hubProjects.type',
+        'hubProjects.dateCreate',
+        'hubProjects.dateSign',
+        'res.idCustomer_1',
+        'res.idCustomer_2',
+
+        'partner.id',
+        'partner.name',
+      ])
+      .where('customer.id = :id', { id })
+      .getOne();
 
     if (!customer) {
       throw new NotFoundException(`Customer with id ${id} not found`);
     }
+    const userIds = Array.isArray(customer.assignedUser)
+      ? customer.assignedUser
+      : typeof customer.assignedUser === 'string'
+        ? customer.assignedUser.split(',').map((s) => s.trim())
+        : [];
 
-    // Danh sách sản phẩm
+    let userMap = new Map<string, string>();
+    if (userIds.length > 0) {
+      const users = await this.ptCustomerRepo
+        .createQueryBuilder()
+        .select(['u.Id AS id', 'u.Name AS name'])
+        .from('AspNetUsers', 'u')
+        .where('u.Id IN (:...ids)', { ids: userIds })
+        .getRawMany<{ id: string; name: string }>();
+
+      userMap = new Map(users.map((u) => [u.id, u.name]));
+    }
     const products = (customer.ptProducts || []).map((product) => ({
       id: product.id,
       name: product.name,
@@ -34,8 +81,9 @@ export class PtCustomerService {
       dateRenew: product.dateRenew,
       seats: product.seats ?? null,
     }));
+
     const projects = (customer?.hubProjects || [])
-      .filter((project) => project.type === null) // chỉ lấy project chính
+      .filter((project) => project.type === null)
       .map((project) => ({
         name: project.name,
         id: project.id,
@@ -44,7 +92,7 @@ export class PtCustomerService {
       }));
 
     const tickets = (customer?.hubProjects || [])
-      .filter((ticket) => ticket.type === 10) // chỉ lấy ticket hỗ trợ
+      .filter((ticket) => ticket.type === 10)
       .map((ticket) => ({
         name: ticket.name,
         id: ticket.id,
@@ -52,17 +100,12 @@ export class PtCustomerService {
         dateSign: ticket.dateSign,
       }));
 
-    if (!customer) {
-      throw new NotFoundException(`Customer with id ${id} not found`);
-    }
-
-    // Danh sách khách hàng hợp tác (từ hubCustomerRe -> idCustomer_3)
     const partners = (customer.hubCustomerRes || []).map((rel) => ({
       id: rel.idCustomer_3?.id ?? null,
       name: rel.idCustomer_3?.name ?? null,
     }));
 
-    return {
+    const data = {
       id: customer.id,
       name: customer.name,
       fullName: customer.fullName,
@@ -70,14 +113,16 @@ export class PtCustomerService {
       phone: customer.phone,
       categoryName: customer.cat?.name ?? null,
       assignedUser: customer.assignedUser,
+      assignedUserName: userMap.get(customer.assignedUser ?? '') || null,
+
       website: customer.website,
       products,
       projects,
       partners,
       tickets,
     };
+    return removeNullFromObject(data);
   }
-
   async findById(id: number): Promise<PtCustomer | null> {
     return this.ptCustomerRepo.findOne({
       where: { id },
@@ -99,10 +144,12 @@ export class PtCustomerService {
     take = 20,
     key?: string,
   ): Promise<{ data: PtCustomer[]; total: number }> {
-    const whereCondition = key ? { name: Like(`%${key}%`) } : {};
+    const whereCondition = key
+      ? [{ name: Like(`%${key}%`) }, { fullName: Like(`%${key}%`) }]
+      : [];
 
     const [data, total] = await this.ptCustomerRepo.findAndCount({
-      where: whereCondition,
+      where: whereCondition.length > 0 ? whereCondition : undefined,
       skip,
       take,
       relations: ['cat'],
@@ -121,7 +168,8 @@ export class PtCustomerService {
       },
     });
 
-    return { data, total };
+    const cleanedData = removeNullFieldsDeep(data);
+    return { data: cleanedData, total };
   }
   async findListByNameNoQuery(
     skip = 0,
@@ -146,7 +194,8 @@ export class PtCustomerService {
       },
     });
 
-    return { data, total };
+    const cleanedResult = removeNullFieldsDeep(data);
+    return { data: cleanedResult, total };
   }
 
   async getOverviewByName(name: string) {
@@ -199,7 +248,7 @@ export class PtCustomerService {
       dateRenew: product.dateRenew,
     }));
 
-    return {
+    return removeNullFromObject({
       id: customer.id,
       name: customer.name,
       fullname: customer.fullName,
@@ -213,40 +262,78 @@ export class PtCustomerService {
       products,
       project, // một dự án đầu tiên nếu có
       allProjects: filteredProjects, // ← thêm nếu bạn muốn trả về toàn bộ danh sách project type null
-    };
+    });
   }
 
   async findProjectsByCustomerId(customerId: number) {
-    return this.ptCustomerRepo
+    type ProjectRaw = {
+      project_id: number;
+      project_name: string;
+      project_code: string;
+      project_dateCreate: Date;
+      project_dateSign: Date;
+    };
+
+    const projects: ProjectRaw[] = await this.ptCustomerRepo
       .createQueryBuilder('customer')
-      .leftJoin('customer.hubProjects', 'project') // ← join từ customer sang project
+      .leftJoin('customer.hubProjects', 'project')
       .select([
-        'project.id AS id',
-        'project.name AS name',
-        'project.code AS code',
-        'project.dateCreate AS dateCreate',
-        'project.dateSign AS dateSign',
+        'project.id AS project_id',
+        'project.name AS project_name',
+        'project.code AS project_code',
+        'project.dateCreate AS project_dateCreate',
+        'project.dateSign AS project_dateSign',
       ])
       .where('customer.id = :customerId', { customerId })
       .andWhere('project.type IS NULL')
       .getRawMany();
+
+    return projects.map((p) =>
+      removeNullFromObject({
+        id: p.project_id,
+        name: p.project_name,
+        code: p.project_code,
+        dateCreate: p.project_dateCreate,
+        dateSign: p.project_dateSign,
+      }),
+    );
   }
+
   async findContactsByCustomerId(customerId: number) {
-    return this.ptCustomerRepo
+    type ContactRaw = {
+      contact_name: string;
+      contact_phone: string;
+      contact_email: string;
+      contact_email2: string;
+      contact_followUsers: string;
+    };
+
+    const contacts: ContactRaw[] = await this.ptCustomerRepo
       .createQueryBuilder('customer')
-      .leftJoin('customer.hubContacts', 'contacts')
+      .leftJoin('customer.hubContacts', 'contact')
       .select([
-        'contacts.name AS Name',
-        'contacts.phone AS Phone',
-        'contacts.email AS Email',
-        'contacts.email2 AS Email2',
-        'contacts.followUsers AS FollowUsers',
+        'contact.name AS contact_name',
+        'contact.phone AS contact_phone',
+        'contact.email AS contact_email',
+        'contact.email2 AS contact_email2',
+        'contact.followUsers AS contact_followUsers',
       ])
       .where('customer.id = :customerId', { customerId })
       .getRawMany();
+
+    return contacts.map((c) =>
+      removeNullFromObject({
+        name: c.contact_name,
+        phone: c.contact_phone,
+        email: c.contact_email,
+        email2: c.contact_email2,
+        followUsers: c.contact_followUsers,
+      }),
+    );
   }
+
   async findProductsByCustomerId(customerId: number) {
-    return this.ptCustomerRepo
+    const products = await this.ptCustomerRepo
       .createQueryBuilder('customer')
       .leftJoin('customer.ptProducts', 'product')
       .select([
@@ -258,11 +345,14 @@ export class PtCustomerService {
       ])
       .where('customer.id = :customerId', { customerId })
       .getRawMany();
+
+    return products.map((p) => removeNullFromObject(p));
   }
+
   async getActivitiesByCustomer(customerId: number) {
     const customer = await this.ptCustomerRepo.findOne({
       where: { id: customerId },
-      relations: ['hubActivities', 'hubProjects'],
+      relations: ['hubActivities', 'hubActivities.project', 'hubProjects'],
     });
 
     if (!customer || !customer.hubActivities) {
@@ -359,20 +449,23 @@ export class PtCustomerService {
       { userId: '', name: '', count: 0 },
     );
 
-    const recentActivities = activities.slice(0, 10).map((act) => ({
-      id: act.id,
-      title: act.title,
-      dateCreate: act.dateCreate,
-      userId: act.userId,
-      userName: userMap.get(act.userId ?? '') || 'Unknown User',
-      type: typeMap[act.type ?? 0] || 'Other',
-      project: act.project
-        ? {
-            id: act.project.id,
-            name: act.project.name,
-          }
-        : null,
-    }));
+    const recentActivities = removeNullFieldsDeep(
+      activities.slice(0, 10).map((act) => ({
+        id: act.id,
+        title: act.title,
+        dateCreate: act.dateCreate,
+        userId: act.userId,
+        userName: userMap.get(act.userId ?? '') || 'Unknown User',
+        type: typeMap[act.type ?? 0] || 'Other',
+
+        project: act.project
+          ? {
+              id: act.project.id,
+              name: act.project.name,
+            }
+          : null,
+      })),
+    );
 
     const weeksCount = Object.keys(weeksMap).length;
 
@@ -432,6 +525,6 @@ export class PtCustomerService {
       assignedUserName: userMap.get(project.assignedUser ?? '') || null,
     }));
 
-    return tickets;
+    return removeNullFieldsDeep(tickets);
   }
 }

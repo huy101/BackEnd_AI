@@ -2,10 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { HubProject } from 'output/entities/HubProject';
 import { Repository } from 'typeorm';
-import {
-  findStatusIdByFuzzyText,
-  statusMap,
-} from '../../utils/utils/normalize';
+import { findStatusIdByFuzzyText, statusMap } from '../../utils/normalize';
 
 @Injectable()
 export class ticketsService {
@@ -127,6 +124,8 @@ export class ticketsService {
       userMap = new Map<string, string>(users.map((u) => [u.id, u.name]));
     }
     console.log('userMap', userMap);
+    const clean = (obj: Record<string, any>) =>
+      Object.fromEntries(Object.entries(obj).filter(([_, v]) => v != null));
 
     return {
       total,
@@ -136,7 +135,7 @@ export class ticketsService {
             ? ticket.ticketProducts
             : Number((ticket.ticketProducts || '').split(',')[0].trim());
 
-        return {
+        return clean({
           id: ticket.id,
           name: ticket.name,
           phone: ticket.ticketPhone,
@@ -144,15 +143,14 @@ export class ticketsService {
           ticketName: ticket.ticketName,
           cc: ticket.ticketCc,
           products: ticket.ticketProducts,
-          productName:
-            (productMap.get(firstProductId) as string | undefined) ?? null, // ← thêm dòng này
+          productName: productMap.get(firstProductId) ?? null,
           solution: ticket.ticketSolution,
           error: ticket.ticketError,
           dateCreate: ticket.dateCreate,
           dateSign: ticket.dateSign,
           assignedUserName: userMap.get(ticket.assignedUser ?? '') || null,
           statusLabel: statusMap[ticket.statusId ?? 0] || null,
-        };
+        });
       }),
     };
   }

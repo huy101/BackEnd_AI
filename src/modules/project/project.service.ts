@@ -1,3 +1,4 @@
+import { removeNullFieldsDeep } from 'src/utils/removeNullFields';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import Fuse from 'fuse.js';
@@ -78,40 +79,86 @@ export class HubProjectService {
     });
   }
   async getTasksByProjectId(projectId: number) {
-    const project = await this.hubProjectRepo.findOne({
-      where: { id: projectId, type: IsNull() }, // chỉ lấy dự án (not ticket)
+    const projects = await this.hubProjectRepo.find({
+      where: { id: projectId },
       relations: [
         'hubWorkingTasks',
+        'hubWorkingTasks.hubWorkingTaskSubs',
         'hubWorkingTasks.space',
-        'hubWorkingTasks.process',
+        'hubWorkingTasks.space.hubWorkingTaskColumns',
       ],
     });
 
-    if (!project) {
-      throw new NotFoundException(`Project with id ${projectId} not found`);
+    const tasks = projects[0]?.hubWorkingTasks || [];
+
+    const allUserIds = [
+      ...new Set(
+        tasks
+          .flatMap((task) =>
+            task.assignedUser
+              ? task.assignedUser.split(',').map((id) => id.trim())
+              : [],
+          )
+          .filter(Boolean),
+      ),
+    ];
+
+    let userMap = new Map<string, string>();
+    if (allUserIds.length > 0) {
+      const users = await this.hubProjectRepo
+        .createQueryBuilder()
+        .select(['u.Id AS id', 'u.Name AS name'])
+        .from('AspNetUsers', 'u')
+        .where('u.Id IN (:...ids)', { ids: allUserIds })
+        .getRawMany<{ id: string; name: string }>();
+
+      userMap = new Map(users.map((u) => [u.id, u.name]));
     }
 
-    const tasks = (project.hubWorkingTasks || []).filter(
-      (task) => !task.archive,
-    );
+    const result = tasks.map((task) => {
+      const assignedUserNames = task.assignedUser
+        ? task.assignedUser
+            .split(',')
+            .map((id) => userMap.get(id.trim()))
+            .filter(Boolean)
+        : [];
 
-    return tasks
-      .sort((a, b) => {
-        const aDate = a.startDate?.getTime() || 0;
-        const bDate = b.startDate?.getTime() || 0;
-        return aDate - bDate;
-      })
-      .map((task) => ({
+      return {
         id: task.id,
         title: task.title,
         description: task.description,
         dueDate: task.dueDate,
         startDate: task.startDate,
         percent: task.percent,
-        assignedUser: task.assignedUser,
-        spaceName: task.space?.name ?? null,
-      }));
+        assignedUserNames,
+        order: task.order,
+        color: task.color,
+        space: task.space
+          ? {
+              id: task.space.id,
+              name: task.space.name,
+              columns: task.space.hubWorkingTaskColumns?.map((col) => ({
+                id: col.id,
+                name: col.name,
+                order: col.order,
+                bgColor: col.bgColor,
+                textColor: col.textColor,
+              })),
+            }
+          : null,
+        subs: task.hubWorkingTaskSubs?.map((sub) => ({
+          id: sub.id,
+          title: sub.title,
+          done: sub.done,
+          dueDate: sub.dueDate,
+          order: sub.order,
+        })),
+      };
+    });
+
+    return removeNullFieldsDeep(result);
   }
+
   async getProjectOverviewByName(input: string) {
     const projects = await this.hubProjectRepo.find({
       relations: ['cat', 'customer', 'ownerProject'],
@@ -136,7 +183,6 @@ export class HubProjectService {
     });
 
     const result = fuse.search(normalize(input));
-
     if (result.length === 0) {
       throw new NotFoundException(
         `Project with name similar to "${input}" not found`,
@@ -145,48 +191,36 @@ export class HubProjectService {
 
     const project = result[0].item;
 
-    return {
+    const userIds = project.assignedUser
+      ? project.assignedUser.split(',').map((id) => id.trim())
+      : [];
+
+    let userMap = new Map<string, string>();
+    if (userIds.length > 0) {
+      const users = await this.hubProjectRepo
+        .createQueryBuilder()
+        .select(['u.Id AS id', 'u.Name AS name'])
+        .from('AspNetUsers', 'u')
+        .where('u.Id IN (:...ids)', { ids: userIds })
+        .getRawMany<{ id: string; name: string }>();
+
+      userMap = new Map(users.map((u) => [u.id, u.name]));
+    }
+
+    const data = {
       id: project.id,
       name: project.name,
       dateCreate: project.dateCreate,
       dateSign: project.dateSign,
       categoryName: project.cat?.name ?? null,
       customerName: project.customer?.name ?? null,
-      assignedUser: project.assignedUser,
+      assignedUserNames: userIds.map((id) => userMap.get(id) ?? id),
       ownerProjectName: project.ownerProject?.name ?? null,
     };
-  }
 
-  async getAllProjects(
-    skip = 0,
-    take = 20,
-  ): Promise<{ data: any[]; total: number }> {
-    const [data, total] = await this.hubProjectRepo.findAndCount({
-      where: {
-        type: IsNull(),
-      },
-      skip,
-      take,
-      relations: ['customer', 'cat'],
-      select: {
-        id: true,
-        name: true,
-        dateCreate: true,
-        assignedUser: true,
-        percent: true,
-        customer: {
-          name: true,
-        },
-        cat: {
-          name: true,
-        },
-      },
-      order: {
-        id: 'DESC',
-      },
-    });
-
-    return { data, total };
+    return {
+      data: removeNullFieldsDeep([data])[0],
+    };
   }
 
   async getAllProjectsWithFilter(
@@ -268,7 +302,6 @@ export class HubProjectService {
         id: item.id,
         name: item.name,
         dateCreate: item.dateCreate,
-        assignedUser: item.assignedUser,
         assignedUserNames: assignedUserIds.map((id) => userMap.get(id) ?? id),
         percent: item.percent,
         customerName: item.customer?.name || null,
@@ -283,7 +316,7 @@ export class HubProjectService {
       );
       return { data: filteredResult, total: filteredResult.length };
     }
-    return { data: result, total };
+    return { data: removeNullFieldsDeep(result), total };
   }
 
   async getDetailById(id: number) {
@@ -310,8 +343,7 @@ export class HubProjectService {
       userMap = new Map(users.map((u) => [u.id, u.name]));
       console.log('userMap', userMap);
     }
-
-    return {
+    const data = {
       id: project.id,
       name: project.name,
       code: project.code,
@@ -319,7 +351,6 @@ export class HubProjectService {
       dateSign: project.dateSign,
       total: project.total,
       note: project.note,
-      assignedUser: project.assignedUser,
       assignedUserNames: userIds.map((id) => userMap.get(id) ?? id),
 
       percent: project.percent,
@@ -331,6 +362,7 @@ export class HubProjectService {
       customer: project.customer?.name || null,
       category: project.cat?.name || null,
     };
+    return { data: removeNullFieldsDeep([data])[0] };
   }
 
   async getDetailByIdtest(id: number) {

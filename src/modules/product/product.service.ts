@@ -1,3 +1,7 @@
+import {
+  removeNullFieldsDeep,
+  removeNullFromObject,
+} from 'src/utils/removeNullFields';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PtProduct } from 'output/entities/PtProduct';
@@ -151,6 +155,7 @@ export class PtProductService {
         'customer.assignedUser',
         'brand.name',
       ])
+
       .skip(skip)
       .take(take)
       .orderBy('product.id', 'DESC')
@@ -195,13 +200,18 @@ export class PtProductService {
       const names = ids.map((id) => userMap.get(id)).filter(Boolean);
       const { assignedUser, ...restCustomer } = item.customer ?? {};
 
-      return {
+      const result = {
         ...item,
         customer: {
           ...restCustomer,
           assignedUserNames: names,
         },
       };
+      // If you want to clean the result, do it directly on 'result'
+      const cleanedData = removeNullFieldsDeep([
+        JSON.parse(JSON.stringify(result)),
+      ])[0];
+      return cleanedData;
     });
 
     return { data: enrichedData, total };
@@ -244,18 +254,15 @@ export class PtProductService {
     if (!product) {
       throw new NotFoundException(`Không tìm thấy sản phẩm có tên giống`);
     }
-
-    return {
+    const clearData = {
       id: product.id,
       name: product.name,
-      serial: product.serial,
-      contract: product.contract,
       dateActive: product.dateActive,
       dateRenew: product.dateRenew,
       customerName: product.customer?.name || null,
       brand: product.brand?.name || null,
-      supplier: product.supplier_2?.name || product.supplier || null,
     };
+    return { data: removeNullFieldsDeep([clearData])[0] };
   }
 
   async getDetailById(id: number): Promise<any> {
@@ -267,12 +274,9 @@ export class PtProductService {
     if (!product) {
       throw new NotFoundException(`Không tìm thấy sản phẩm ID: ${id}`);
     }
-
-    return {
+    const clearData = {
       id: product.id,
       name: product.name,
-      serial: product.serial,
-      contract: product.contract,
       contractSign: product.contractSign,
       dateActive: product.dateActive,
       dateRenew: product.dateRenew,
@@ -300,6 +304,9 @@ export class PtProductService {
       customer: product.customer?.name || null,
       brand: product.brand?.name || null,
       supplier: product.supplier_2?.name || product.supplier || null,
+    };
+    return {
+      data: removeNullFromObject(clearData),
     };
   }
 }

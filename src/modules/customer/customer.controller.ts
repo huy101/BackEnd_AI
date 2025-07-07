@@ -12,10 +12,9 @@ export class PtCustomerController {
     return this.ptCustomerService.getOverviewByName(name);
   }
   @Get('/list_customers')
-  findCustomerListnoquerry(
-    @Query('skip') skip = '0',
-    @Query('take') take = '20',
-  ) {
+  @ApiQuery({ name: 'skip', required: false, type: Number })
+  @ApiQuery({ name: 'take', required: false, type: Number })
+  findCustomerListNoQuery(@Query('skip') skip = 0, @Query('take') take = 20) {
     return this.ptCustomerService.findListByNameNoQuery(
       Number(skip),
       Number(take),

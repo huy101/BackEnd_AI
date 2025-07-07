@@ -6,15 +6,6 @@ import { ApiQuery } from '@nestjs/swagger';
 export class HubProjectController {
   constructor(private readonly hubProjectService: HubProjectService) {}
 
-  @Get('/list_projects')
-  @ApiQuery({ name: 'skip', required: false, type: String })
-  @ApiQuery({ name: 'take', required: false, type: String })
-  getAllProjects(
-    @Query('skip') skip: string = '0',
-    @Query('take') take: string = '20',
-  ) {
-    return this.hubProjectService.getAllProjects(Number(skip), Number(take));
-  }
   @Get('projects')
   @ApiQuery({ name: 'name', required: false, type: String })
   @ApiQuery({ name: 'startMonth', required: false, type: String })
