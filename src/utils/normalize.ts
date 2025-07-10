@@ -36,16 +36,44 @@ export function buildSearchQueryByWords<
 ): SelectQueryBuilder<T> {
   const normalized = searchText
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // bỏ dấu
-    .replace(/[^a-zA-Z0-9\s]/g, '') // bỏ ký tự đặc biệt
-    .replace(/\s+/g, ' ') // bỏ khoảng trắng thừa
+    .replace(/[\u0300-\u036f]/g, '') // remove diacritics
+    .replace(/[^a-zA-Z0-9\s]/g, '') // remove special characters
+    .replace(/\s+/g, ' ') // remove extra spaces
     .trim()
     .toLowerCase();
 
   const words = normalized.split(' ');
 
   words.forEach((word, index) => {
-    queryBuilder.andWhere(`LOWER(unaccent(${field})) LIKE :word${index}`, {
+    queryBuilder.andWhere(
+      `LOWER(TRANSLATE(${field}, 'àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđĐ', 'aaaaaaaaaaaaaaaaaeeeeeeeeeeiiiiioooooooooooooooouuuuuuuuuuuyyyyyd')) LIKE :word${index}`,
+      {
+        [`word${index}`]: `%${word}%`,
+      },
+    );
+  });
+
+  return queryBuilder;
+}
+export function buildSearchQueryByWords2<
+  T extends import('typeorm').ObjectLiteral,
+>(
+  queryBuilder: SelectQueryBuilder<T>,
+  field: string, // ví dụ: 'city.Name'
+  searchText: string,
+): SelectQueryBuilder<T> {
+  const normalized = searchText
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Bỏ dấu
+    .replace(/[^a-zA-Z0-9\s]/g, '') // Bỏ ký tự đặc biệt
+    .replace(/\s+/g, ' ') // Bỏ khoảng trắng thừa
+    .trim()
+    .toLowerCase();
+
+  const words = normalized.split(' ');
+
+  words.forEach((word, index) => {
+    queryBuilder.andWhere(`LOWER(${field}) LIKE :word${index}`, {
       [`word${index}`]: `%${word}%`,
     });
   });

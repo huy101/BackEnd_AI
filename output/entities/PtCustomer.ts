@@ -20,6 +20,7 @@ import { PtProduct } from './PtProduct';
 import { PtRoom } from './PtRoom';
 import { PtSupplier } from './PtSupplier';
 import { PtUseCase } from './PtUseCase';
+import { City } from './City';
 
 @Index('PK__PT_Custo__3214EC070A697801', ['id'], { unique: true })
 @Entity('PT_Customer', { schema: 'dbo' })
@@ -209,4 +210,7 @@ export class PtCustomer {
 
   @OneToMany(() => PtUseCase, (ptUseCase) => ptUseCase.customer)
   ptUseCases: PtUseCase[];
+  @ManyToOne(() => City, (city) => city.id)
+  @JoinColumn({ name: 'City_Id' }) // RẤT QUAN TRỌNG
+  city: City;
 }

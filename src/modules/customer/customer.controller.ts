@@ -7,47 +7,68 @@ export class PtCustomerController {
   service: any;
   constructor(private readonly ptCustomerService: PtCustomerService) {}
 
-  @Get('overview')
-  getOverviewByName(@Query('name') name: string) {
-    return this.ptCustomerService.getOverviewByName(name);
-  }
-  @Get('/list_customers')
+  @Get('/list_customers/:key') // dùng `?` nếu key là optional
   @ApiQuery({ name: 'skip', required: false, type: Number })
   @ApiQuery({ name: 'take', required: false, type: Number })
-  findCustomerListNoQuery(@Query('skip') skip = 0, @Query('take') take = 20) {
-    return this.ptCustomerService.findListByNameNoQuery(
-      Number(skip),
-      Number(take),
-    );
-  }
-  @Get('/list_customers/:key')
-  @ApiQuery({
-    name: 'skip',
-    required: false,
-    type: Number,
-    description: 'Số bản ghi bỏ qua',
-  })
-  @ApiQuery({
-    name: 'take',
-    required: false,
-    type: Number,
-    description: 'Số bản ghi lấy ra',
-  })
   @ApiQuery({
     name: 'key',
     required: false,
     type: String,
     description: 'Tìm theo tên khách hàng (LIKE)',
   })
+  @ApiQuery({
+    name: 'fields',
+    required: false,
+    type: String,
+    description: 'Lọc theo fields',
+  })
+  @ApiQuery({
+    name: 'assignedUserName',
+    required: false,
+    type: String,
+  })
+  @ApiQuery({
+    name: 'cityName',
+    required: false,
+    type: String,
+    description: 'Lọc theo tên thành phố (City.name LIKE)',
+  })
+  @ApiQuery({
+    name: 'fields',
+    required: false,
+    type: String,
+  })
+  @ApiQuery({
+    name: 'statusName',
+    required: false,
+    type: String,
+  })
+  @ApiQuery({
+    name: 'lastUpdate',
+    required: false,
+    type: Date,
+  })
   findCustomerList(
-    @Query('skip') skip = '0',
-    @Query('take') take = '20',
+    @Query('skip') skip: string = '0',
+    @Query('take') take: string = '20',
     @Query('key') key?: string,
+    @Query('assignedUserName') assignedUserName?: string,
+    @Query('cityName') cityName?: string,
+    @Query('fields') fields?: string,
+    @Query('statusName') statusName?: string,
+    @Query('lastUpdate') lastUpdate?: Date | string,
   ) {
+    const parsedSkip = Number.isNaN(Number(skip)) ? 0 : Number(skip);
+    const parsedTake = Number.isNaN(Number(take)) ? 20 : Number(take);
     return this.ptCustomerService.findListByName(
-      Number(skip),
-      Number(take),
+      parsedSkip,
+      parsedTake,
       key,
+      assignedUserName,
+      cityName,
+      fields,
+      statusName,
+      lastUpdate,
     );
   }
 

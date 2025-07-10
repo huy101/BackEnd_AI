@@ -38,10 +38,7 @@ export class HubProjectController {
   getProjectDetail(@Query('id', ParseIntPipe) id: number) {
     return this.hubProjectService.getDetailById(id);
   }
-  @Get(':name/overview')
-  async getOverviewByName(@Query('name') name: string) {
-    return this.hubProjectService.getProjectOverviewByName(name);
-  }
+
   @Get('/projects/:id/list_tasks')
   async getTasksByProjectId(@Query('id', ParseIntPipe) id: number) {
     return this.hubProjectService.getTasksByProjectId(id);

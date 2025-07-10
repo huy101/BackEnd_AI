@@ -1,11 +1,15 @@
+import { Counter } from './../../../output/entities/Counter';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { stat } from 'fs';
 import { PtCustomer } from 'output/entities/PtCustomer';
+import { normalize } from 'path';
+
 import {
   removeNullFieldsDeep,
   removeNullFromObject,
 } from 'src/utils/removeNullFields';
-import { Like, Repository } from 'typeorm';
+import { Brackets, Like, Repository } from 'typeorm';
 
 @Injectable()
 export class PtCustomerService {
@@ -80,7 +84,11 @@ export class PtCustomerService {
       dateActive: product.dateActive,
       dateRenew: product.dateRenew,
       seats: product.seats ?? null,
+      renew: product.dateRenew !== null && product.dateRenew !== undefined,
     }));
+    const totalHasRenewDate = products.filter(
+      (p) => p.dateRenew !== null && p.dateRenew !== undefined,
+    ).length;
 
     const projects = (customer?.hubProjects || [])
       .filter((project) => project.type === null)
@@ -116,6 +124,7 @@ export class PtCustomerService {
       assignedUserName: userMap.get(customer.assignedUser ?? '') || null,
 
       website: customer.website,
+      totalRenewDate: totalHasRenewDate,
       products,
       projects,
       partners,
@@ -142,35 +151,148 @@ export class PtCustomerService {
   async findListByName(
     skip = 0,
     take = 20,
-    key?: string,
-  ): Promise<{ data: PtCustomer[]; total: number }> {
-    const whereCondition = key
-      ? [{ name: Like(`%${key}%`) }, { fullName: Like(`%${key}%`) }]
-      : [];
+    key: string = '',
+    assignedUserName: string = '',
+    cityName: string = '',
+    fields: string = '',
+    statusName: string = '',
+    lastUpdate: Date | string = '',
+  ): Promise<{ data: any[]; total: number }> {
+    const query = this.ptCustomerRepo
+      .createQueryBuilder('customer')
+      .leftJoinAndSelect('customer.cat', 'cat')
+      .leftJoinAndSelect('customer.city', 'city') // join để lọc theo city name
+      .leftJoinAndSelect('customer.status', 'status')
+      .where('1=1');
 
-    const [data, total] = await this.ptCustomerRepo.findAndCount({
-      where: whereCondition.length > 0 ? whereCondition : undefined,
-      skip,
-      take,
-      relations: ['cat'],
-      select: {
-        id: true,
-        name: true,
-        fullName: true,
-        email: true,
-        phone: true,
-        cat: {
-          name: true,
-        },
-      },
-      order: {
-        id: 'DESC',
-      },
+    // Lọc theo tên hoặc fullName
+    if (key) {
+      const normalized = normalize(key);
+      query.andWhere(
+        new Brackets((qb) => {
+          qb.orWhere('LOWER(customer.name) LIKE :key', {
+            key: `%${normalized}%`,
+          });
+          qb.orWhere('LOWER(customer.fullName) LIKE :key', {
+            key: `%${normalized}%`,
+          });
+        }),
+      );
+    }
+
+    // Lọc theo assignedUserName (Tên user trong AspNetUsers)
+    if (assignedUserName) {
+      const matchedUsers = await this.ptCustomerRepo
+        .createQueryBuilder()
+        .select(['u.Id AS id'])
+        .from('AspNetUsers', 'u')
+        .where('u.Name LIKE :name', { name: `%${assignedUserName}%` })
+        .getRawMany<{ id: string }>();
+
+      const matchedUserIds = matchedUsers.map((u) => u.id);
+
+      if (matchedUserIds.length > 0) {
+        const conditions = matchedUserIds.map(
+          (id) => `CHARINDEX('${id}', customer.assignedUser) > 0`,
+        );
+        query.andWhere(`(${conditions.join(' OR ')})`);
+      } else {
+        return { data: [], total: 0 };
+      }
+    }
+    if (cityName) {
+      const normalized = normalize(cityName);
+      query.andWhere('LOWER(city.name) LIKE :city', {
+        city: `%${normalized}%`,
+      });
+    }
+    // 🔍 Lọc theo fields (chuỗi)
+    if (fields) {
+      const normalized = normalize(fields);
+      query.andWhere('LOWER(customer.fields) LIKE :fields', {
+        fields: `%${normalized}%`,
+      });
+    }
+
+    // 🔍 Lọc theo status.name
+    if (statusName) {
+      const normalized = normalize(statusName);
+      query.andWhere('LOWER(status.name) LIKE :status', {
+        status: `%${normalized}%`,
+      });
+    }
+    if (lastUpdate) {
+      const parsedDate = new Date(lastUpdate);
+      if (!isNaN(parsedDate.getTime())) {
+        query.andWhere('CAST(customer.lastUpdate AS DATETIME) = :lastUpdate', {
+          lastUpdate: parsedDate.toISOString(),
+        });
+      }
+    }
+    const [customers, total] = await query
+      .select([
+        'customer.id',
+        'customer.name',
+        'customer.fullName',
+        'customer.email',
+        'customer.phone',
+        'customer.assignedUser',
+        'customer.fields',
+        'customer.lastUpdate',
+        'city.name',
+        'status.name',
+        'cat.name',
+      ])
+      .skip(skip)
+      .take(take)
+      .orderBy('customer.id', 'DESC')
+      .getManyAndCount();
+    query.getCount();
+    // Lấy userIds từ assignedUser (nhiều id ngăn cách bằng dấu phẩy)
+    const userIds = Array.from(
+      new Set(
+        customers
+          .flatMap((cus) =>
+            cus.assignedUser
+              ? cus.assignedUser.split(',').map((id) => id.trim())
+              : [],
+          )
+          .filter(Boolean),
+      ),
+    );
+
+    const userMap = new Map<string, string>();
+    if (userIds.length > 0) {
+      const chunkSize = 500;
+      for (let i = 0; i < userIds.length; i += chunkSize) {
+        const chunk = userIds.slice(i, i + chunkSize);
+        const users = await this.ptCustomerRepo
+          .createQueryBuilder()
+          .select(['u.Id AS id', 'u.Name AS name'])
+          .from('AspNetUsers', 'u')
+          .where('u.Id IN (:...ids)', { ids: chunk })
+          .getRawMany<{ id: string; name: string }>();
+
+        users.forEach((u) => userMap.set(u.id, u.name));
+      }
+    }
+
+    const enrichedData = customers.map((cus) => {
+      const ids = cus.assignedUser?.split(',').map((id) => id.trim()) || [];
+      const assignedUserNames = ids
+        .map((id) => userMap.get(id))
+        .filter(Boolean);
+
+      const { assignedUser, ...rest } = cus;
+      return {
+        ...rest,
+        assignedUserNames,
+      };
     });
 
-    const cleanedData = removeNullFieldsDeep(data);
-    return { data: cleanedData, total };
+    return { data: removeNullFieldsDeep(enrichedData), total };
   }
+
   async findListByNameNoQuery(
     skip = 0,
     take = 20,

@@ -149,6 +149,7 @@ export class PtProductService {
         'product.dateActive',
         'product.dateRenew',
         'product.seats',
+        'productName.renew',
         'customer.id',
         'customer.name',
         'customer.fullName',

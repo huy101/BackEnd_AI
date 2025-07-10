@@ -8,10 +8,10 @@ import { PtProductService } from './product.service';
 export class PtProductController {
   constructor(private readonly ptProductService: PtProductService) {}
 
-  @Get()
-  async getAll(): Promise<PtProduct[]> {
-    return this.ptProductService.findAll();
-  }
+  // @Get()
+  // async getAll(): Promise<PtProduct[]> {
+  //   return this.ptProductService.findAll();
+  // }
 
   // @Get('/:name/customers')
   // @ApiQuery({ name: 'skip', required: false, type: String })
@@ -69,10 +69,6 @@ export class PtProductController {
   // getProducts(@Query('skip') skip = '0', @Query('take') take = '20') {
   //   return this.ptProductService.findListProducts(Number(skip), Number(take));
   // }
-  @Get('overview')
-  getProductOverview(@Query('name') name: string) {
-    return this.ptProductService.getOverviewByName(name);
-  }
 
   // API 2: GET /products/:id/detail
   @Get(':id/detail')

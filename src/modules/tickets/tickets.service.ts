@@ -71,8 +71,7 @@ export class ticketsService {
         'project.assignedUser',
       ])
       .orderBy('project.dateCreate', 'DESC')
-      .skip(skip)
-      .take(take)
+
       .getManyAndCount();
     const productIds = [
       ...new Set(
