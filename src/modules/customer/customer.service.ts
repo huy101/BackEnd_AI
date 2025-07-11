@@ -3,6 +3,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { stat } from 'fs';
 import { PtCustomer } from 'output/entities/PtCustomer';
+import { PtProduct } from 'output/entities/PtProduct';
 import { normalize } from 'path';
 
 import {
@@ -43,6 +44,7 @@ export class PtCustomerService {
         'ptProducts.name',
         'ptProducts.dateActive',
         'ptProducts.dateRenew',
+        'ptProducts.renew',
         'ptProducts.seats',
         'hubProjects.id',
         'hubProjects.name',
@@ -84,7 +86,7 @@ export class PtCustomerService {
       dateActive: product.dateActive,
       dateRenew: product.dateRenew,
       seats: product.seats ?? null,
-      renew: product.dateRenew !== null && product.dateRenew !== undefined,
+      renew: product.renew,
     }));
     const totalHasRenewDate = products.filter(
       (p) => p.dateRenew !== null && p.dateRenew !== undefined,
@@ -161,11 +163,18 @@ export class PtCustomerService {
     const query = this.ptCustomerRepo
       .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.cat', 'cat')
-      .leftJoinAndSelect('customer.city', 'city') // join để lọc theo city name
+      .leftJoinAndSelect('customer.city', 'city')
       .leftJoinAndSelect('customer.status', 'status')
-      .where('1=1');
+      .addSelect(
+        (subQuery) =>
+          subQuery
+            .select('COUNT(product.id)', 'count')
+            .from(PtProduct, 'product')
+            .where('product.customer = customer.id'),
+        'productCount',
+      )
+      .orderBy('productCount', 'DESC');
 
-    // Lọc theo tên hoặc fullName
     if (key) {
       const normalized = normalize(key);
       query.andWhere(
@@ -180,7 +189,6 @@ export class PtCustomerService {
       );
     }
 
-    // Lọc theo assignedUserName (Tên user trong AspNetUsers)
     if (assignedUserName) {
       const matchedUsers = await this.ptCustomerRepo
         .createQueryBuilder()
@@ -190,7 +198,6 @@ export class PtCustomerService {
         .getRawMany<{ id: string }>();
 
       const matchedUserIds = matchedUsers.map((u) => u.id);
-
       if (matchedUserIds.length > 0) {
         const conditions = matchedUserIds.map(
           (id) => `CHARINDEX('${id}', customer.assignedUser) > 0`,
@@ -200,13 +207,14 @@ export class PtCustomerService {
         return { data: [], total: 0 };
       }
     }
+
     if (cityName) {
       const normalized = normalize(cityName);
       query.andWhere('LOWER(city.name) LIKE :city', {
         city: `%${normalized}%`,
       });
     }
-    // 🔍 Lọc theo fields (chuỗi)
+
     if (fields) {
       const normalized = normalize(fields);
       query.andWhere('LOWER(customer.fields) LIKE :fields', {
@@ -214,13 +222,13 @@ export class PtCustomerService {
       });
     }
 
-    // 🔍 Lọc theo status.name
     if (statusName) {
       const normalized = normalize(statusName);
       query.andWhere('LOWER(status.name) LIKE :status', {
         status: `%${normalized}%`,
       });
     }
+
     if (lastUpdate) {
       const parsedDate = new Date(lastUpdate);
       if (!isNaN(parsedDate.getTime())) {
@@ -229,26 +237,16 @@ export class PtCustomerService {
         });
       }
     }
-    const [customers, total] = await query
-      .select([
-        'customer.id',
-        'customer.name',
-        'customer.fullName',
-        'customer.email',
-        'customer.phone',
-        'customer.assignedUser',
-        'customer.fields',
-        'customer.lastUpdate',
-        'city.name',
-        'status.name',
-        'cat.name',
-      ])
+
+    const { entities: customers, raw } = await query
       .skip(skip)
       .take(take)
-      .orderBy('customer.id', 'DESC')
-      .getManyAndCount();
-    query.getCount();
-    // Lấy userIds từ assignedUser (nhiều id ngăn cách bằng dấu phẩy)
+      .getRawAndEntities();
+
+    const total = await this.ptCustomerRepo
+      .createQueryBuilder('customer')
+      .getCount();
+
     const userIds = Array.from(
       new Set(
         customers
@@ -277,16 +275,27 @@ export class PtCustomerService {
       }
     }
 
-    const enrichedData = customers.map((cus) => {
-      const ids = cus.assignedUser?.split(',').map((id) => id.trim()) || [];
+    const enrichedData = customers.map((customer, index) => {
+      const ids =
+        customer.assignedUser?.split(',').map((id) => id.trim()) || [];
       const assignedUserNames = ids
         .map((id) => userMap.get(id))
         .filter(Boolean);
+      const productCount = Number(raw[index]['productCount']) || 0;
 
-      const { assignedUser, ...rest } = cus;
       return {
-        ...rest,
+        id: customer.id,
+        name: customer.name,
+        fullName: customer.fullName,
+        email: customer.email,
+        phone: customer.phone,
+        fields: customer.fields,
+        lastUpdate: customer.lastUpdate,
+        cityName: customer.city?.name,
+        statusName: customer.status?.name,
+        categoryName: customer.cat?.name,
         assignedUserNames,
+        productCount,
       };
     });
 
@@ -464,6 +473,7 @@ export class PtCustomerService {
         'product.dateActive AS dateActive',
         'product.dateRenew AS dateRenew',
         'product.seats AS seats',
+        'product.renew AS renew',
       ])
       .where('customer.id = :customerId', { customerId })
       .getRawMany();
