@@ -158,7 +158,7 @@ export class PtCustomerService {
     cityName: string = '',
     fields: string = '',
     statusName: string = '',
-    lastUpdate: Date | string = '',
+    lastUpdate: string = '',
   ): Promise<{ data: any[]; total: number }> {
     const query = this.ptCustomerRepo
       .createQueryBuilder('customer')
@@ -230,11 +230,21 @@ export class PtCustomerService {
     }
 
     if (lastUpdate) {
-      const parsedDate = new Date(lastUpdate);
-      if (!isNaN(parsedDate.getTime())) {
-        query.andWhere('CAST(customer.lastUpdate AS DATETIME) = :lastUpdate', {
-          lastUpdate: parsedDate.toISOString(),
-        });
+      // Chuẩn hóa định dạng ngày từ chuỗi
+      const normalized = lastUpdate.replace(/-/g, '/'); // Chuyển 1-1-1990 → 1/1/1990
+      const [day, month, year] = normalized.split(/[\/]/).map(Number);
+      console.log('Parsed date components:', { day, month, year });
+      if (day && month && year) {
+        // Tạo Date từ thành phần
+        const parsedDate = new Date(year, month - 1, day + 1); // Lưu ý: tháng tính từ 0
+        if (!isNaN(parsedDate.getTime())) {
+          // Format thành yyyy-mm-dd để so sánh
+          const formattedDate = parsedDate.toISOString().split('T')[0]; // '1990-01-01'
+          console.log('Formatted date for query:', formattedDate);
+          query.andWhere('CAST(customer.lastUpdate AS DATE) = :lastUpdate', {
+            lastUpdate: formattedDate,
+          });
+        }
       }
     }
 

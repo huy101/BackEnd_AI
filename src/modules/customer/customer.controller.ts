@@ -46,7 +46,7 @@ export class PtCustomerController {
   @ApiQuery({
     name: 'lastUpdate',
     required: false,
-    type: Date,
+    type: String,
   })
   findCustomerList(
     @Query('skip') skip: string = '0',
@@ -56,7 +56,7 @@ export class PtCustomerController {
     @Query('cityName') cityName?: string,
     @Query('fields') fields?: string,
     @Query('statusName') statusName?: string,
-    @Query('lastUpdate') lastUpdate?: Date | string,
+    @Query('lastUpdate') lastUpdate?: string,
   ) {
     const parsedSkip = Number.isNaN(Number(skip)) ? 0 : Number(skip);
     const parsedTake = Number.isNaN(Number(take)) ? 20 : Number(take);
